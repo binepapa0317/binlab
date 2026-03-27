@@ -150,10 +150,15 @@ def generate_random_data(data_type: str) -> str:
 
 
 def _type_text(text: str, interval: float = 0.03) -> str:
-    """Types text at the current cursor position."""
+    """Types text at the current cursor position using clipboard (supports Korean)."""
     _ensure_pyautogui()
     time.sleep(0.3)
-    pyautogui.typewrite(text, interval=interval)
+    if _PYPERCLIP:
+        pyperclip.copy(text)
+        time.sleep(0.1)
+        pyautogui.hotkey("ctrl", "v")
+    else:
+        pyautogui.typewrite(text, interval=interval)
     return f"Typed: {text[:50]}{'...' if len(text) > 50 else ''}"
 
 
@@ -312,7 +317,7 @@ def _smart_type(text: str, clear_first: bool = True) -> str:
     """
     Types text into the currently focused field.
     Optionally clears the field first.
-    Uses clipboard for long text (faster, more reliable).
+    Always uses clipboard to support Korean characters.
     """
     _ensure_pyautogui()
 
@@ -320,7 +325,7 @@ def _smart_type(text: str, clear_first: bool = True) -> str:
         _clear_field()
         time.sleep(0.1)
 
-    if len(text) > 20 and _PYPERCLIP:
+    if _PYPERCLIP:
         pyperclip.copy(text)
         time.sleep(0.1)
         pyautogui.hotkey("ctrl", "v")
@@ -328,6 +333,7 @@ def _smart_type(text: str, clear_first: bool = True) -> str:
     else:
         pyautogui.typewrite(text, interval=0.04)
         return f"Smart-typed: {text[:50]}"
+
 
 
 def _analyze_screen_for_element(description: str) -> tuple[int, int] | None:
