@@ -5,6 +5,7 @@ import re
 import sys
 import traceback
 from pathlib import Path
+from pynput import keyboard
 
 import pyaudio
 from google import genai
@@ -494,6 +495,24 @@ class JarvisLive:
         self.audio_in_queue = None
         self.out_queue      = None
         self._loop          = None
+        self._mic_open      = False   # Push-to-Talk: True while Ctrl held
+
+        # --- Push-to-Talk keyboard listener (runs in background) ---
+        def _on_press(key):
+            if key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
+                if not self._mic_open:
+                    self._mic_open = True
+                    print("[빈쿡] 🎙️ 마이크 ON (Ctrl 누름)")
+
+        def _on_release(key):
+            if key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
+                if self._mic_open:
+                    self._mic_open = False
+                    print("[빈쿡] 🔇 마이크 OFF (Ctrl 뗌)")
+
+        self._kb_listener = keyboard.Listener(on_press=_on_press, on_release=_on_release)
+        self._kb_listener.daemon = True
+        self._kb_listener.start()
 
     def speak(self, text: str):
         """Thread-safe speak — any thread can call this."""
@@ -719,10 +738,16 @@ class JarvisLive:
         )
         try:
             import numpy as np
+            silence = b'\x00' * (CHUNK_SIZE * 2)  # 16-bit silence
             while True:
                 data = await asyncio.to_thread(
                     stream.read, CHUNK_SIZE, exception_on_overflow=False
                 )
+
+                # Push-to-Talk: only send real audio when Ctrl is held
+                if not self._mic_open:
+                    await self.out_queue.put({"data": silence, "mime_type": "audio/pcm"})
+                    continue
                 
                 audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32)
                 rms = np.sqrt(max(0.0, float(np.mean(np.square(audio_array)))))
