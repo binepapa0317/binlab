@@ -183,15 +183,46 @@ class _BrowserThread:
         return self._page
 
     async def _launch(self):
+        import os
         prog_id                        = _get_default_browser_id()
         engine_name, exe_path, channel = _find_browser_executable(prog_id)
         engine                         = getattr(self._playwright, engine_name)
 
-        launch_kwargs = {"headless": False}
+        # --- Try to use user's real Chrome profile (keeps logins & cookies) ---
+        chrome_profile = os.path.expandvars(
+            r"%LOCALAPPDATA%\Google\Chrome\User Data"
+        )
+        if engine_name == "chromium" and Path(chrome_profile).exists():
+            try:
+                launch_args = [
+                    "--start-maximized",
+                    "--disable-blink-features=AutomationControlled",
+                ]
+                persistent_kwargs = {
+                    "headless": False,
+                    "args": launch_args,
+                    "viewport": None,
+                    "ignore_default_args": ["--enable-automation"],
+                }
+                if exe_path:
+                    persistent_kwargs["executable_path"] = exe_path
+                elif channel:
+                    persistent_kwargs["channel"] = channel
 
+                self._context = await engine.launch_persistent_context(
+                    chrome_profile, **persistent_kwargs
+                )
+                self._page    = self._context.pages[0] if self._context.pages else await self._context.new_page()
+                self._browser = None  # persistent context manages its own browser
+                print(f"[Browser] ✅ Launched with user profile (로그인 유지)")
+                return
+            except Exception as e:
+                print(f"[Browser] ⚠️ Profile locked ({e}), using fresh browser")
+
+        # --- Fallback: fresh browser without profile ---
+        launch_kwargs = {"headless": False}
         if engine_name == "chromium":
             launch_kwargs["args"] = ["--start-maximized"]
-
         if exe_path:
             launch_kwargs["executable_path"] = exe_path
         elif channel:
