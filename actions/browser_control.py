@@ -188,11 +188,11 @@ class _BrowserThread:
         engine_name, exe_path, channel = _find_browser_executable(prog_id)
         engine                         = getattr(self._playwright, engine_name)
 
-        # --- Try to use user's real Chrome profile (keeps logins & cookies) ---
-        chrome_profile = os.path.expandvars(
-            r"%LOCALAPPDATA%\Google\Chrome\User Data"
-        )
-        if engine_name == "chromium" and Path(chrome_profile).exists():
+        # --- Use Bincook's dedicated profile (login persists, no lock conflicts) ---
+        bincook_profile = str(Path(__file__).resolve().parent.parent / "browser_profile")
+        Path(bincook_profile).mkdir(exist_ok=True)
+
+        if engine_name == "chromium":
             try:
                 launch_args = [
                     "--start-maximized",
@@ -210,14 +210,14 @@ class _BrowserThread:
                     persistent_kwargs["channel"] = channel
 
                 self._context = await engine.launch_persistent_context(
-                    chrome_profile, **persistent_kwargs
+                    bincook_profile, **persistent_kwargs
                 )
                 self._page    = self._context.pages[0] if self._context.pages else await self._context.new_page()
-                self._browser = None  # persistent context manages its own browser
-                print(f"[Browser] ✅ Launched with user profile (로그인 유지)")
+                self._browser = None
+                print(f"[Browser] ✅ Launched with Bincook profile (로그인 영구 유지)")
                 return
             except Exception as e:
-                print(f"[Browser] ⚠️ Profile locked ({e}), using fresh browser")
+                print(f"[Browser] ⚠️ Profile error ({e}), using fresh browser")
 
         # --- Fallback: fresh browser without profile ---
         launch_kwargs = {"headless": False}
