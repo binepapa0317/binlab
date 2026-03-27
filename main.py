@@ -68,7 +68,7 @@ def _load_system_prompt() -> str:
 
 _memory_turn_counter  = 0
 _memory_turn_lock     = threading.Lock()
-_MEMORY_EVERY_N_TURNS = 5
+_MEMORY_EVERY_N_TURNS = 2
 _last_memory_input    = ""
 
 
@@ -97,29 +97,42 @@ def _update_memory_async(user_text: str, jarvis_text: str) -> None:
     _last_memory_input = text
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=_get_api_key())
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
+        import requests
+        print(f"[Memory] ⏳ Processing memory check... Input: {text[:50]}")
+        headers = {"Content-Type": "application/json"}
+        
+        # Stage 1: Quick check
+        check_payload = {
+            "model": "qwen2.5-coder:14b",
+            "messages": [
+                {"role": "user", "content": f"Does this message contain personal facts about the user (name, age, city, job, hobby, relationship, birthday, preference)? Reply only YES or NO.\\n\\nMessage: {text[:300]}"}
+            ]
+        }
+        
+        check_resp = requests.post("http://localhost:11434/v1/chat/completions", json=check_payload, headers=headers).json()
+        check_text = check_resp.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
-        check = model.generate_content(
-            f"Does this message contain personal facts about the user "
-            f"(name, age, city, job, hobby, relationship, birthday, preference)? "
-            f"Reply only YES or NO.\n\nMessage: {text[:300]}"
-        )
-        if "YES" not in check.text.upper():
+        if "YES" not in check_text.upper():
             return
 
-        raw = model.generate_content(
-            f"Extract personal facts from this message. Any language.\n"
-            f"Return ONLY valid JSON or {{}} if nothing found.\n"
-            f"Extract: name, age, birthday, city, job, hobbies, preferences, relationships, language.\n"
-            f"Skip: weather, reminders, search results, commands.\n\n"
-            f"Format:\n"
-            f'{{"identity":{{"name":{{"value":"..."}}}}}}, '
-            f'"preferences":{{"hobby":{{"value":"..."}}}}, '
-            f'"notes":{{"job":{{"value":"..."}}}}}}\n\n'
-            f"Message: {text[:500]}\n\nJSON:"
-        ).text.strip()
+        # Stage 2: Extraction
+        extract_payload = {
+            "model": "qwen2.5-coder:14b",
+            "messages": [
+                {"role": "user", "content": f"Extract personal facts from this message. Any language.\\n"
+                    f"Return ONLY valid JSON or {{}} if nothing found.\\n"
+                    f"Extract: name, age, birthday, city, job, hobbies, preferences, relationships, language.\\n"
+                    f"Skip: weather, reminders, search results, commands.\\n\\n"
+                    f"Format:\\n"
+                    f'{{"identity":{{"name":{{"value":"..."}}}}}}, '
+                    f'"preferences":{{"hobby":{{"value":"..."}}}}, '
+                    f'"notes":{{"job":{{"value":"..."}}}}}}\\n\\n'
+                    f"Message: {text[:500]}\\n\\nJSON:"}
+            ]
+        }
+        
+        extract_resp = requests.post("http://localhost:11434/v1/chat/completions", json=extract_payload, headers=headers).json()
+        raw = extract_resp.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
         raw = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
         if not raw or raw == "{}":
@@ -705,10 +718,19 @@ class JarvisLive:
             frames_per_buffer=CHUNK_SIZE,
         )
         try:
+            import numpy as np
             while True:
                 data = await asyncio.to_thread(
                     stream.read, CHUNK_SIZE, exception_on_overflow=False
                 )
+                
+                audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                rms = np.sqrt(max(0.0, float(np.mean(np.square(audio_array)))))
+                
+                # Noise gate: replace static noise with absolute silence to stop hallucinations
+                if rms < 80:
+                    data = b'\x00' * len(data)
+
                 await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
         except Exception as e:
             print(f"[JARVIS] ❌ Mic error: {e}")
