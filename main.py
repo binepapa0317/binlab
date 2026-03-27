@@ -549,7 +549,7 @@ class JarvisLive:
         name = fc.name
         args = dict(fc.args or {})
 
-        print(f"[JARVIS] 🔧 TOOL: {name}  ARGS: {args}")
+        print(f"[빈쿡] 🔧 TOOL: {name}  ARGS: {args}")
 
         loop   = asyncio.get_event_loop()
         result = "Done."
@@ -694,7 +694,7 @@ class JarvisLive:
             result = f"Tool '{name}' failed: {e}"
             traceback.print_exc()
 
-        print(f"[JARVIS] 📤 {name} → {result[:80]}")
+        print(f"[빈쿡] 📤 {name} → {result[:80]}")
 
         return types.FunctionResponse(
             id=fc.id,
@@ -708,7 +708,7 @@ class JarvisLive:
             await self.session.send_realtime_input(media=msg)
 
     async def _listen_audio(self):
-        print("[JARVIS] 🎤 Mic started")
+        print("[빈쿡] 🎤 Mic started")
         stream = await asyncio.to_thread(
             pya.open,
             format=FORMAT,
@@ -733,13 +733,13 @@ class JarvisLive:
 
                 await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
         except Exception as e:
-            print(f"[JARVIS] ❌ Mic error: {e}")
+            print(f"[빈쿡] ❌ Mic error: {e}")
             raise
         finally:
             stream.close()
 
     async def _receive_audio(self):
-        print("[JARVIS] 👂 Recv started")
+        print("[빈쿡] 👂 Recv started")
         out_buf = []
         in_buf  = []
 
@@ -790,7 +790,7 @@ class JarvisLive:
                     if response.tool_call:
                         fn_responses = []
                         for fc in response.tool_call.function_calls:
-                            print(f"[JARVIS] 📞 Tool call: {fc.name}")
+                            print(f"[빈쿡] 📞 Tool call: {fc.name}")
                             fr = await self._execute_tool(fc)
                             fn_responses.append(fr)
                         await self.session.send_tool_response(
@@ -798,12 +798,12 @@ class JarvisLive:
                         )
 
         except Exception as e:
-            print(f"[JARVIS] ❌ Recv error: {e}")
+            print(f"[빈쿡] ❌ Recv error: {e}")
             traceback.print_exc()
             raise
 
     async def _play_audio(self):
-        print("[JARVIS] 🔊 Play started")
+        print("[빈쿡] 🔊 Play started")
         stream = await asyncio.to_thread(
             pya.open,
             format=FORMAT,
@@ -829,7 +829,7 @@ class JarvisLive:
                 await asyncio.to_thread(stream.write, chunk)
                 
         except Exception as e:
-            print(f"[JARVIS] ❌ Play error: {e}")
+            print(f"[빈쿡] ❌ Play error: {e}")
             raise
         finally:
             stream.close()
@@ -842,7 +842,7 @@ class JarvisLive:
 
         while True:
             try:
-                print("[JARVIS] 🔌 Connecting...")
+                print("[빈쿡] 🔌 Connecting...")
                 config = self._build_config()
 
                 async with (
@@ -854,7 +854,7 @@ class JarvisLive:
                     self.audio_in_queue = asyncio.Queue()
                     self.out_queue      = asyncio.Queue(maxsize=10)
 
-                    print("[JARVIS] ✅ Connected.")
+                    print("[빈쿡] ✅ Connected.")
                     self.ui.write_log("JARVIS online.")
 
                     tg.create_task(self._send_realtime())
@@ -863,10 +863,10 @@ class JarvisLive:
                     tg.create_task(self._play_audio())
 
             except Exception as e:
-                print(f"[JARVIS] ⚠️  Error: {e}")
+                print(f"[빈쿡] ⚠️  Error: {e}")
                 traceback.print_exc()
 
-            print("[JARVIS] 🔄 Reconnecting in 3s...")
+            print("[빈쿡] 🔄 Reconnecting in 3s...")
             await asyncio.sleep(3)
 
 def main():
