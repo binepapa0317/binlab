@@ -254,9 +254,19 @@ class _BrowserThread:
         self._page = await self._context.new_page()
 
     async def _close(self):
+        # Close persistent context (flushes cookies/login to disk)
+        if self._context and not self._browser:
+            try:
+                await self._context.close()
+            except Exception:
+                pass
+            self._context = None
+            self._page    = None
+        # Close regular browser
         if self._browser:
             await self._browser.close()
             self._browser = None
+            self._context = None
             self._page    = None
         if self._playwright:
             await self._playwright.stop()
